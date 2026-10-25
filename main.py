@@ -166,6 +166,21 @@ class KankanFuPlugin(Star):
 
         artwork = pick_artwork(artworks, self._min_bookmarks)
         if artwork is None:
+            # 记录诊断信息，便于排查「为什么没有够福的图」
+            hi = sum(1 for a in artworks if a.original_url)
+            bm_sorted = sorted(
+                (a.total_bookmarks for a in artworks), reverse=True
+            )
+            logger.warning(
+                "[KankanFu] 未找到够福的图: 检索到 %d 条, min_bookmarks=%d, "
+                "有原图=%d/%d, 收藏Top10=%s, word=%r",
+                len(artworks),
+                self._min_bookmarks,
+                hi,
+                len(artworks),
+                bm_sorted[:10],
+                self._search_word,
+            )
             yield event.plain_result(NOT_HOT_TEXT)
             return
 
