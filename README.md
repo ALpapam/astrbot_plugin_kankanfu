@@ -36,14 +36,14 @@ ID: 123 | 收藏 5000 | 浏览 30000
 | `proxy` | string | 空 | 访问 pixiv.net 使用的代理，如 `http://127.0.0.1:7890` |
 | `search_word` | string | `小穴` | Pixiv 检索关键词（标签）。**注意：不要带 `#` 前缀**，否则搜不到结果 |
 | `min_bookmarks` | int | 2000 | 最低收藏数，越高越热，用于过滤低质图 |
-| `max_results` | int | 5 | 抓取检索结果**页数**（每页 30 条，默认 5 页 = 150 条）。Pixiv 热门排序并非严格按收藏数，需跨页抓取才能筛到高收藏作品 |
+| `max_results` | int | 5 | 抓取检索结果**页数**（热门预览每页约 30 条，默认最多 5 页）。检索走 Pixiv 官方「热门预览」接口，返回的多是该词条下被广泛收藏的经典作品 |
 | `timeout_seconds` | int | 30 | 请求超时（5-120 秒） |
 | `send_progress` | bool | true | 检索前是否先发一条「正在看看福」提示 |
 | `show_info` | bool | true | 图片后是否附带作品信息（标题 / 收藏数 / 画师） |
 | `cooldown_seconds` | int | 10 | 同一用户的请求冷却时间（秒），0 为不限制 |
 | `max_photo_bytes` | int | 9 | 发送前允许的图片大小上限（MB，1-20），超出会自动压缩后再发送，避免平台「图片过大」报错 |
-| `search_rating` | string | `r18` | 检索内容范围（选择框）：`r18`（仅 R-18，默认）、`全年龄`（不含限制级）、`r18g`（仅 R-18G）。注意：以「小穴」等词检索时热门作品基本都属 R-18，选「全年龄」可能搜不到图 |
-| `exclude_ai` | bool | true | 是否过滤掉 AI 生成的作品。Pixiv 返回的作品带 `illust_ai_type` 标记，开启后只发送非 AI 生成的作品；若开启后经常提示没有够福的图，可考虑关闭 |
+| `search_rating` | string | `r18` | 检索内容范围（选择框）：`r18`（仅 R-18，默认）、`全年龄`（不含限制级）、`r18g`（仅 R-18G）。热门预览里同词条可能以某一分级为主，若选某范围总是「没有够福的图」，可换成别的范围 |
+| `exclude_ai` | bool | true | 是否过滤掉 AI 生成的作品。Pixiv 返回的作品带 `illust_ai_type` 标记，开启后只发送非 AI 生成的作品 |
 
 > 国内服务器通常需要给 `proxy` 配置代理才能访问 `pixiv.net`。
 
@@ -64,9 +64,9 @@ Pixiv 没有公开的“网页登录拿 token”入口，社区通用的取法�
 直接发送 `看看福` 即可（是否需要 @机器人 或唤醒前缀取决于 AstrBot 配置）。插件会：
 
 1. 用 refresh_token 登录 Pixiv；
-2. 跨页（默认 5 页）按热度检索 `小穴` 标签；
-3. 从合并结果里筛出 **收藏数 ≥ min_bookmarks** 且**有原图**的作品（即“非低质图”），
-   在其中**随机挑 1 张**发送；
+2. 走 Pixiv 官方「热门预览」接口跨页检索 `小穴` 标签（返回该词条下被广泛收藏的经典高热度作品，无需会员）；
+3. 从结果里按 `search_rating` 分级、`exclude_ai` 过滤 AI，并筛出 **收藏数 ≥ min_bookmarks** 且**有原图**的作品
+   （即“非低质图”），在其中**随机挑 1 张**发送；
 4. 下载原图（处理 pixiv 防盗链）发送给你，并附带作品信息。
 
 ## 常见问题
@@ -81,8 +81,9 @@ Pixiv 没有公开的“网页登录拿 token”入口，社区通用的取法�
 ## 实现说明
 
 - 认证：`POST https://oauth.secure.pixiv.net/auth/token`，用 `refresh_token` 换 `access_token`；
-- 检索：`GET https://app-api.pixiv.net/v1/search/illust`，`word=小穴&search_target=partial_match_for_tags&filter=for_ios&sort=popular_desc`；
-- 过滤：筛出 `total_bookmarks >= min_bookmarks` 且有原图的作品作为“非低质图”，再随机挑一张发送；
+- 检索：`GET https://app-api.pixiv.net/v1/search/popular-preview/illust`，`word=小穴&search_target=partial_match_for_tags&filter=for_ios`，
+  这是 Pixiv 专门给免费账号返回「热门预览」的高收藏作品接口（非会员即可访问、无需会员细分）；
+- 过滤：按 `search_rating` 分级、`exclude_ai` 排除 AI 后，筛出 `total_bookmarks >= min_bookmarks` 且有原图的作品作为“非低质图”，再随机挑一张发送；
 - 原图提取：依次尝试单 P 的 `meta_single_page.original_image_url`、多 P 的 `meta_pages[0].image_urls.original`、以及顶层 `image_urls`（large/medium）回退，确保多 P 收藏大户也能识别；
 - 下载：`GET https://i.pximg.net/{urls.original}`，携带 `Referer: https://www.pixiv.net/` 与鉴权头处理防盗链；
 - 图片以字节写入临时文件后发送，避免平台无法访问 pixiv 图片链接；
@@ -119,6 +120,7 @@ python -m pytest tests -q
 
 ## 更新日志
 
+- **v0.0.15**：**修复「没有够福的图」**。根因：`search/illust` 的 `popular_desc` 排序返回的是“刚上传的近期低收藏/AI 图”，高收藏作品排不进来。现改为走 Pixiv 官方「热门预览」接口 `search/popular-preview/illust`，免费账号即可拿到该词条下被广泛收藏的经典高收藏作品（带 `illust_ai_type` 标记），配合分级/非 AI/收藏/随机挑图，各配置都能稳定出图。
 - **v0.0.14**：新增「过滤 AI 生成作品」开关 `exclude_ai`（默认开启）。Pixiv 作品带
   `illust_ai_type` 标记，开启后只发送非 AI 生成的作品，避免发到 AI 图。
 - **v0.0.13**：新增「检索内容范围」选择框配置 `search_rating`，可选 `r18`（默认）/`全年龄`/`r18g`，

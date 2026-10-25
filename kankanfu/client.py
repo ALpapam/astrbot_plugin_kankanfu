@@ -206,31 +206,36 @@ class PixivClient:
     ) -> list[dict[str, Any]]:
         """按热度检索插画，跨页抓取后合并返回原始作品条目。
 
-        Pixiv 的 ``popular_desc`` 排序并非按总收藏数严格从高到低，
-        前几页常混入大量低收藏作品。因此这里会抓取多个 offset 页
-        （每页 30 条，默认最多 5 页 = 150 条），全部合并后由调用方
-        自行按收藏数筛选高热度作品。
+        走 Pixiv 官方的 ``popular-preview``（热门预览）接口：它专门为免费
+        账号提供该词条下被广泛收藏的经典高热度作品（非会员即可访问、无需
+        会员细分），返回的是真正的高收藏作品，且带 ``illust_ai_type`` 标记，
+        可供调用方过滤 AI 生成内容。
+
+        ``popular-preview`` 返回数量有限（每页约 30 条），因此这里跨页抓取
+        最多 ``max_pages`` 页，全部合并后由调用方按收藏数/分级/是否 AI 筛。
         """
         if not self._access_token:
             await self._ensure_token()
         params = {
             "word": word,
             "search_target": "partial_match_for_tags",
-            "sort": sort,
             "filter": "for_ios",
         }
-        results: list[dict[str, Any]] = []
+        result_by_url: dict[str, dict[str, Any]] = {}
+        next_url: str | None = urljoin(APP_API_BASE, "/v1/search/popular-preview/illust")
         page = 0
         timeout = aiohttp.ClientTimeout(total=self.timeout_seconds)
         try:
             async with aiohttp.ClientSession(timeout=timeout) as session:
-                while len(results) < num_results and page < max_pages:
-                    page_params = dict(params)
-                    if page > 0:
-                        page_params["offset"] = str(page * 30)
+                while (
+                    next_url and len(result_by_url) < num_results and page < max_pages
+                ):
+                    request_url = (
+                        next_url if page > 0 else urljoin(APP_API_BASE, "/v1/search/popular-preview/illust")
+                    )
                     async with session.get(
-                        urljoin(APP_API_BASE, "/v1/search/illust"),
-                        params=page_params,
+                        request_url,
+                        params=(params if page == 0 else None),
                         headers=await self._authorized_headers(),
                         proxy=self.proxy or None,
                     ) as response:
@@ -240,8 +245,8 @@ class PixivClient:
                             # token 过期，重新换取后再试一次
                             await self.refresh_access_token(session)
                             async with session.get(
-                                urljoin(APP_API_BASE, "/v1/search/illust"),
-                                params=page_params,
+                                request_url,
+                                params=(params if page == 0 else None),
                                 headers=await self._authorized_headers(),
                                 proxy=self.proxy or None,
                             ) as retry:
@@ -268,14 +273,17 @@ class PixivClient:
                             body[:160],
                         )
                         break
-                    results.extend(batch)
+                    for item in batch:
+                        if isinstance(item, dict) and item.get("id") is not None:
+                            result_by_url[str(item["id"])] = item
                     page += 1
-                    if payload.get("next_url") is None:
+                    next_url = payload.get("next_url")
+                    if not next_url:
                         break
         except aiohttp.ClientError as exc:
             raise PixivError(f"检索 Pixiv 时网络错误: {type(exc).__name__}") from exc
 
-        return results[:num_results]
+        return list(result_by_url.values())[:num_results]
 
     async def _ensure_token(self) -> None:
         timeout = aiohttp.ClientTimeout(total=self.timeout_seconds)
