@@ -62,7 +62,8 @@ Pixiv 没有公开的“网页登录拿 token”入口，社区通用的取法�
 
 1. 用 refresh_token 登录 Pixiv；
 2. 跨页（默认 5 页）按热度检索 `小穴` 标签；
-3. 从合并结果里挑 **收藏数最高的** 且 **≥ min_bookmarks**、**有原图** 的作品（即“非低质图”）；
+3. 从合并结果里筛出 **收藏数 ≥ min_bookmarks** 且**有原图**的作品（即“非低质图”），
+   在其中**随机挑 1 张**发送；
 4. 下载原图（处理 pixiv 防盗链）发送给你，并附带作品信息。
 
 ## 常见问题
@@ -78,7 +79,7 @@ Pixiv 没有公开的“网页登录拿 token”入口，社区通用的取法�
 
 - 认证：`POST https://oauth.secure.pixiv.net/auth/token`，用 `refresh_token` 换 `access_token`；
 - 检索：`GET https://app-api.pixiv.net/v1/search/illust`，`word=小穴&search_target=partial_match_for_tags&filter=for_ios&sort=popular_desc`；
-- 过滤：只保留 `total_bookmarks >= min_bookmarks` 且有原图的作品作为“非低质图”；
+- 过滤：筛出 `total_bookmarks >= min_bookmarks` 且有原图的作品作为“非低质图”，再随机挑一张发送；
 - 原图提取：依次尝试单 P 的 `meta_single_page.original_image_url`、多 P 的 `meta_pages[0].image_urls.original`、以及顶层 `image_urls`（large/medium）回退，确保多 P 收藏大户也能识别；
 - 下载：`GET https://i.pximg.net/{urls.original}`，携带 `Referer: https://www.pixiv.net/` 与鉴权头处理防盗链；
 - 图片以字节写入临时文件后发送，避免平台无法访问 pixiv 图片链接；
@@ -115,6 +116,8 @@ python -m pytest tests -q
 
 ## 更新日志
 
+- **v0.0.11**：改为在符合热度标准（收藏达标 + 有原图）的作品里**随机挑 1 张**，
+  不再固定发收藏数最高的同一张，避免每次都是同一幅图。
 - **v0.0.10**：修复「总是提示没有找到够福的图」。根因：`search_illusts` 直接返回
   `illusts` 列表，而 `parse_artworks` 只接受带 `illusts` 键的响应字典，导致所有作品
   都被解析成 0 条。现兼容字典与裸列表两种入参（新增回归测试）。

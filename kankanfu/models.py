@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import random
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlsplit
@@ -152,16 +153,21 @@ def is_high_quality(artwork: Artwork, min_bookmarks: int) -> bool:
     return bool(artwork.original_url)
 
 
-def pick_artwork(artworks: list[Artwork], min_bookmarks: int) -> Artwork | None:
-    """从跨页合并后的作品列表里，挑收藏数最高的符合高热度标准的可下载图片。
+def pick_artwork(
+    artworks: list[Artwork],
+    min_bookmarks: int,
+    rng: random.Random | None = None,
+) -> Artwork | None:
+    """从符合高热度标准（收藏达标 + 有原图）的作品里随机挑 1 张。
 
     检索响应按 ``popular_desc`` 返回但并非严格按收藏数排序，
-    因此这里会对符合条件（收藏达标 + 有原图）的作品按收藏数降序取第一名。
+    先筛出全部符合条件（收藏达标 + 有原图）的作品，再在其中随机抽取一张，
+    避免每次都发收藏数最高的同一张。可用 ``rng`` 注入随机源以方便测试。
     """
+    rng = rng if rng is not None else random
     candidates = [
         artwork for artwork in artworks if is_high_quality(artwork, min_bookmarks)
     ]
     if not candidates:
         return None
-    candidates.sort(key=lambda a: a.total_bookmarks, reverse=True)
-    return candidates[0]
+    return rng.choice(candidates)

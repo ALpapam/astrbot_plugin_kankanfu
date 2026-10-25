@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import random
+
 from kankanfu.models import (
     is_high_quality,
     parse_artwork,
@@ -101,7 +103,19 @@ def test_pick_artwork_prefers_first_hot():
     cold = parse_artwork(RAW_COLD)
     artworks = [cold, hot]
     picked = pick_artwork(artworks, 2000)
-    assert picked is hot
+    assert picked is hot  # 只有 hot 符合热度标准，随机也只会选它
+
+
+def test_pick_artwork_random_within_candidates():
+    hot1 = parse_artwork(RAW_HOT)
+    raw2 = dict(RAW_HOT, id=124, title="另一张")
+    hot2 = parse_artwork(raw2)
+    assert hot1 is not None and hot2 is not None
+    artworks = [hot1, hot2]
+    # 用固定种子确保可复现：多次抽取都应落在两个候选中
+    rng = random.Random(42)
+    picked = {pick_artwork(artworks, 2000, rng=rng).illust_id for _ in range(50)}
+    assert picked == {123, 124}
 
 
 def test_pick_artwork_none_when_all_cold():
