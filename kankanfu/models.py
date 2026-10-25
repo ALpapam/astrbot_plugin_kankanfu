@@ -146,6 +146,43 @@ def parse_artworks(payload: dict[str, Any] | list[dict[str, Any]]) -> list[Artwo
     return works
 
 
+RATING_R18 = "r18"
+RATING_R18G = "r18g"
+RATING_SFW = "全年龄"
+
+
+def artwork_rating(artwork: Artwork) -> str:
+    """根据作品标签判断其分级标签是否含 R-18 / R-18G。
+
+    返回 ``r18g`` / ``r18`` / ``sfw`` 三者之一。优先判 R-18G，
+    因为 R-18G 作品常同时带 R-18 标签。
+    """
+    has_r18g = any(tag == "R-18G" for tag in artwork.tags)
+    if has_r18g:
+        return RATING_R18G
+    has_r18 = any(tag == "R-18" for tag in artwork.tags)
+    if has_r18:
+        return RATING_R18
+    return RATING_SFW
+
+
+def filter_by_rating(artworks: list[Artwork], rating: str) -> list[Artwork]:
+    """按用户选择的检索范围过滤作品。
+
+    - ``r18``（默认）：只要含 R-18 标签的作品（排除 R-18G，恶劣内容单列）
+    - ``r18g``：只要含 R-18G 标签的作品
+    - ``全年龄``：排除所有 R-18 / R-18G，仅保留全年龄
+    rating 取值归一化，未知值按 ``r18`` 处理。
+    """
+    mode = (rating or RATING_R18).strip()
+    if mode == RATING_R18G:
+        return [a for a in artworks if artwork_rating(a) == RATING_R18G]
+    if mode == RATING_SFW or mode in ("sfw", "safe"):
+        return [a for a in artworks if artwork_rating(a) == RATING_SFW]
+    # 默认 r18：只要 R-18 的作品（自然排除 R-18G）
+    return [a for a in artworks if artwork_rating(a) == RATING_R18]
+
+
 def is_high_quality(artwork: Artwork, min_bookmarks: int) -> bool:
     """是否属于「非低质图」：收藏数达标且存在可下载的原图。"""
     if artwork.total_bookmarks < min_bookmarks:

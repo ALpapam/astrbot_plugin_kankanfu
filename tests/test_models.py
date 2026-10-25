@@ -5,6 +5,11 @@ from __future__ import annotations
 import random
 
 from kankanfu.models import (
+    RATING_R18,
+    RATING_R18G,
+    RATING_SFW,
+    artwork_rating,
+    filter_by_rating,
     is_high_quality,
     parse_artwork,
     parse_artworks,
@@ -172,3 +177,37 @@ def test_parse_artwork_multipage_no_meta_pages_falls_back_to_image_urls():
         "https://i.pximg.net/c/x/998_p0_master1200.jpg"
     )
     assert is_high_quality(artwork, 1000) is True
+
+
+def _mk(tags):
+    raw = {
+        "id": 1000, "title": "x", "type": "illust", "page_count": 1,
+        "total_bookmarks": 5000, "total_view": 9000,
+        "user": {"id": 7, "name": "人"},
+        "meta_single_page": {"original_image_url": "/img/1000/p0/master1200.jpg"},
+        "tags": tags,
+    }
+    return parse_artwork(raw)
+
+
+def test_artwork_rating():
+    assert artwork_rating(_mk(["小穴"])) == RATING_SFW
+    assert artwork_rating(_mk(["R-18", "小穴"])) == RATING_R18
+    assert artwork_rating(_mk(["R-18", "R-18G"])) == RATING_R18G
+    assert artwork_rating(_mk(["R-18G"])) == RATING_R18G
+
+
+def test_filter_by_rating_modes():
+    sfw = _mk(["小穴"])
+    r18 = _mk(["R-18", "小穴"])
+    r18g = _mk(["R-18G"])
+
+    assert filter_by_rating([sfw, r18, r18g], "r18") == [r18]
+    assert filter_by_rating([sfw, r18, r18g], "r18g") == [r18g]
+    assert filter_by_rating([sfw, r18, r18g], "全年龄") == [sfw]
+
+
+def test_filter_by_rating_unknown_defaults_to_r18():
+    r18 = _mk(["R-18"])
+    assert filter_by_rating([r18], "whatever") == [r18]
+    assert filter_by_rating([r18], None) == [r18]

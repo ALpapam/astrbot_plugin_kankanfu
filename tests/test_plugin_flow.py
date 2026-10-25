@@ -27,7 +27,7 @@ PIXIV_SEARCH_RESPONSE = {
             "total_view": 30000,
             "user": {"id": 1, "name": "テスト絵師"},
             "meta_single_page": {"original_image_url": "/img/123/p0/master1200.jpg"},
-            "tags": ["女の子", "小穴"],
+            "tags": ["R-18", "女の子", "小穴"],
         },
         {
             "id": 456,
@@ -157,7 +157,8 @@ def test_no_hot_artwork_returns_not_hot():
 def test_lowering_min_bookmarks_takes_effect_immediately():
     """改低收藏门槛后，无需重载插件，下一次请求即生效。"""
     payload = {"illusts": [PIXIV_SEARCH_RESPONSE["illusts"][1]]}  # 只有收藏 10 的作品
-    plugin = make_plugin(payload=payload)  # 默认 min_bookmarks=2000
+    # 用「全年龄」范围，让该无分级标签的作品能通过评分过滤，单独验证收藏门槛
+    plugin = make_plugin(payload=payload, search_rating="全年龄")
     # 先把门槛调到 100 以下也搜不到
     plugin.config["min_bookmarks"] = 50
     outputs = run_handler(plugin, FakeEvent())
