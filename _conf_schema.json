@@ -1,0 +1,56 @@
+{
+  "refresh_token": {
+    "description": "Pixiv refresh_token（必填）",
+    "type": "string",
+    "default": "",
+    "secret": true,
+    "obvious_hint": true,
+    "hint": "Pixiv 账号的 refresh_token。获取方式：登录 pixiv.net 后打开浏览器开发者工具，在 Pixiv 任意带图页面执行 `localStorage` 中的 token 获取脚本，或用 Pixiv 第三方 OAuth 工具换取。填写后插件会在运行时报错提示如果 token 失效请重新获取。"
+  },
+  "proxy": {
+    "description": "HTTP/HTTPS 代理（可选）",
+    "type": "string",
+    "default": "",
+    "hint": "访问 pixiv.net 通常需要代理，例如 http://127.0.0.1:7890。留空表示直连（海外服务器适用）。"
+  },
+  "search_word": {
+    "description": "Pixiv 检索关键词",
+    "type": "string",
+    "default": "#小穴",
+    "hint": "默认即可，也可改成其它标签，例如「#女の子」。"
+  },
+  "min_bookmarks": {
+    "description": "最低收藏数（越高越热）",
+    "type": "int",
+    "default": 2000,
+    "hint": "只发送收藏数不低于该值的作品，用于过滤低质图。范围 0-100000。"
+  },
+  "max_results": {
+    "description": "本轮检索结果数",
+    "type": "int",
+    "default": 30,
+    "hint": "默认 30。取值越大一次越能筛出更多符合高收藏数的作品，但请求越慢。"
+  },
+  "timeout_seconds": {
+    "description": "请求 Pixiv 的超时时间（秒）",
+    "type": "int",
+    "default": 30,
+    "hint": "范围 5-120 秒。网络较慢时可适当调大。"
+  },
+  "send_progress": {
+    "description": "检索前是否发送「正在找福」提示",
+    "type": "bool",
+    "default": true
+  },
+  "show_info": {
+    "description": "图片后是否附带作品信息（标题/收藏数）",
+    "type": "bool",
+    "default": true
+  },
+  "cooldown_seconds": {
+    "description": "同一用户的请求冷却时间（秒）",
+    "type": "int",
+    "default": 10,
+    "hint": "设为 0 表示不限制。可以避免刷屏和过快消耗 Pixiv 配额。"
+  }
+}
