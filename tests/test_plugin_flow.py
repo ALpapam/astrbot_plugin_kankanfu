@@ -151,6 +151,22 @@ def test_no_hot_artwork_returns_not_hot():
     assert plugin.client.downloads == []
 
 
+def test_lowering_min_bookmarks_takes_effect_immediately():
+    """改低收藏门槛后，无需重载插件，下一次请求即生效。"""
+    payload = {"illusts": [PIXIV_SEARCH_RESPONSE["illusts"][1]]}  # 只有收藏 10 的作品
+    plugin = make_plugin(payload=payload)  # 默认 min_bookmarks=2000
+    # 先把门槛调到 100 以下也搜不到
+    plugin.config["min_bookmarks"] = 50
+    outputs = run_handler(plugin, FakeEvent())
+    assert outputs[0]["text"] == NOT_HOT_TEXT  # 收藏 10 < 50，仍不达标
+
+    # 再把门槛降到 5，收藏 10 的作品即可通过
+    plugin.config["min_bookmarks"] = 5
+    outputs = run_handler(plugin, FakeEvent())
+    assert outputs[0]["type"] == "image"
+    assert plugin.client.downloads == ["/img/456/p0/master1200.jpg"]
+
+
 def test_pixiv_error_returns_retry_text():
     plugin = make_plugin(error=PixivError("boom"))
     event = FakeEvent()

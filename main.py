@@ -1,9 +1,9 @@
-"""看看福插件：在 Pixiv 检索「#小穴」相关、热度高的非低质图并发送。
+"""看看福插件：在 Pixiv 检索「小穴」相关、热度高的非低质图并发送。
 
 用户发送「看看福」时：
 1. 用配置的 refresh_token 登录 Pixiv；
-2. 在 app-api 上按热度（popular_desc）检索标签（默认 ``#小穴``）；
-3. 从结果中挑第一张收藏数达标（非低质图）的作品；
+2. 在 app-api 上跨页按热度（popular_desc）检索标签（默认 ``小穴``）；
+3. 从合并结果中挑收藏数最高的、达标（非低质图）且有原图的作品；
 4. 下载原图并发送给用户。
 
 图片因 pixiv 防盗链无法直接以链接发送，插件会把原图字节写入临时文件后发送。
@@ -80,6 +80,18 @@ class KankanFuPlugin(Star):
         super().__init__(context)
         self.config = config
 
+        self.client: PixivClient | None = None
+        self._last_search_at: dict[str, float] = {}
+        # 配置在每次执行指令时实时读取（改面板配置无需重载插件即可生效）
+        self._load_config()
+
+    def _load_config(self) -> None:
+        """从当前配置实时读取全部设置。
+
+        AstrBot 的配置对象在用户面板改动后即被更新，因此在指令处理时重新调用
+        本方法即可让新配置立即生效，而不必重载/重启插件。
+        """
+        config = self.config or {}
         self._refresh_token = _get_str(config, "refresh_token")
         self._proxy = _get_str(config, "proxy")
         self._search_word = _get_str(config, "search_word") or DEFAULT_SEARCH_WORD
@@ -90,12 +102,23 @@ class KankanFuPlugin(Star):
         self._show_info = _get_bool(config, "show_info", True)
         self._cooldown = _get_int(config, "cooldown_seconds", 10, 0, 600)
 
-        self.client = PixivClient(
-            refresh_token=self._refresh_token,
-            timeout_seconds=float(self._timeout),
-            proxy=self._proxy,
-        )
-        self._last_search_at: dict[str, float] = {}
+        # 代理 / 超时 / token 变化时重建客户端，避免长期复用旧连接或凭证
+        client = self.client
+        if client is None or not hasattr(client, "refresh_token"):
+            needs_rebuild = client is None
+        else:
+            token_changed = getattr(client, "refresh_token", None) != self._refresh_token
+            proxy_changed = (getattr(client, "proxy", "") or "") != (self._proxy or "")
+            timeout_changed = float(self._timeout) != float(
+                getattr(client, "timeout_seconds", self._timeout)
+            )
+            needs_rebuild = token_changed or proxy_changed or timeout_changed
+        if needs_rebuild:
+            self.client = PixivClient(
+                refresh_token=self._refresh_token,
+                timeout_seconds=float(self._timeout),
+                proxy=self._proxy,
+            )
 
     # ------------------------------------------------------------------
     # 指令
@@ -103,8 +126,11 @@ class KankanFuPlugin(Star):
 
     @filter.command("看看福")
     async def kankanku(self, event: AstrMessageEvent):
-        """看看福：检索 #小穴 高热度图并发给你。"""
+        """看看福：检索高热度标签图并发给你。"""
         sender_id = str(event.get_sender_id() or "")
+
+        # 实时读取配置，改面板配置（收藏门槛 / 搜索词 / token 等）即刻生效
+        self._load_config()
 
         remaining = self._cooldown_remaining(sender_id)
         if remaining > 0:
