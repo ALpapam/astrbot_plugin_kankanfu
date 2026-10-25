@@ -59,6 +59,41 @@ def _extract_tags(data: dict[str, Any]) -> list[str]:
     return result
 
 
+def _extract_original_url(data: dict[str, Any]) -> str:
+    """从 app-api 作品条目里提取可下载的原图 URL。
+
+    Pixiv 的原图地址分布在不同字段：
+    - 单 P 作品：``meta_single_page.original_image_url``
+    - 多 P 作品：顶层没有原图，原图在 ``meta_pages[0].image_urls.original``
+      （顶层 ``image_urls`` 只有 large/缩略图，``original`` 常为 None）
+    因此依次回退，保证多 P 的收藏大户也能被识别为可下载。
+    """
+    meta_single = data.get("meta_single_page")
+    if isinstance(meta_single, dict):
+        url = _first_text(meta_single.get("original_image_url"))
+        if url:
+            return url
+
+    meta_pages = data.get("meta_pages")
+    if isinstance(meta_pages, list) and meta_pages:
+        first = meta_pages[0]
+        first = first if isinstance(first, dict) else {}
+        images = first.get("image_urls")
+        if isinstance(images, dict):
+            url = _first_text(images.get("original"))
+            if url:
+                return url
+
+    # 最后回退到顶层 image_urls 的 large/medium
+    images = data.get("image_urls")
+    if isinstance(images, dict):
+        for key in ("original", "large", "medium"):
+            url = _first_text(images.get(key))
+            if url:
+                return url
+    return ""
+
+
 def parse_artwork(data: dict[str, Any]) -> Artwork | None:
     """把 app-api 返回的单条作品转换为 Artwork。"""
     if not isinstance(data, dict):
@@ -68,9 +103,7 @@ def parse_artwork(data: dict[str, Any]) -> Artwork | None:
     if not illust_id:
         return None
 
-    meta_single = data.get("meta_single_page")
-    meta_single = meta_single if isinstance(meta_single, dict) else {}
-    original_url = _first_text(meta_single.get("original_image_url"))
+    original_url = _extract_original_url(data)
 
     user = data.get("user")
     user = user if isinstance(user, dict) else {}

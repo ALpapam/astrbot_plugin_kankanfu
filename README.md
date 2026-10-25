@@ -70,7 +70,7 @@ Pixiv 没有公开的“网页登录拿 token”入口，社区通用的取法�
 - **提示「还没有配置 Pixiv refresh_token」**：到插件配置填写 `refresh_token`。
 - **提示「refresh_token 无效或已过期」**：token 失效，请重新获取并更新配置。
 - **提示「被限流」**：请求太频繁，稍后再试或把 `cooldown_seconds` 调大。
-- **没有获得够福的图**：本轮没检索到收藏数达标的作品。先确认「最低收藏数」是不是太高、`search_word` 是否带 `#`；改完配置**无需重载插件**，直接再发一条「看看福」即可生效。若仍失败再调低 `min_bookmarks`。
+- **没有获得够福的图**：本轮没检索到收藏数达标的作品（已自动兼容多 P 作品）。先确认「最低收藏数」是不是太高、`search_word` 是否带 `#`；改完配置**无需重载插件**，直接再发一条「看看福」即可生效。若仍失败再调低 `min_bookmarks`。
 - **搜不到任何结果**：确认 `search_word` 没有带 `#` 前缀（例如 `#小穴` 会搜不到，应为 `小穴`）。
 - **提示「Pixiv 暂时没有响应」且文案带括号详情**：括号内会给出服务端返回的真实原因（如 HTTP 400/403），可据此排查（代理、token 或参数）。
 
@@ -79,6 +79,7 @@ Pixiv 没有公开的“网页登录拿 token”入口，社区通用的取法�
 - 认证：`POST https://oauth.secure.pixiv.net/auth/token`，用 `refresh_token` 换 `access_token`；
 - 检索：`GET https://app-api.pixiv.net/v1/search/illust`，`word=小穴&search_target=partial_match_for_tags&filter=for_ios&sort=popular_desc`；
 - 过滤：只保留 `total_bookmarks >= min_bookmarks` 且有原图的作品作为“非低质图”；
+- 原图提取：依次尝试单 P 的 `meta_single_page.original_image_url`、多 P 的 `meta_pages[0].image_urls.original`、以及顶层 `image_urls`（large/medium）回退，确保多 P 收藏大户也能识别；
 - 下载：`GET https://i.pximg.net/{urls.original}`，携带 `Referer: https://www.pixiv.net/` 与鉴权头处理防盗链；
 - 图片以字节写入临时文件后发送，避免平台无法访问 pixiv 图片链接；
 - 只依赖 AstrBot 插件 API 与 `aiohttp`，不写入任何持久化数据。

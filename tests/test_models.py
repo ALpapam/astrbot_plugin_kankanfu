@@ -101,3 +101,54 @@ def test_pick_artwork_prefers_first_hot():
 def test_pick_artwork_none_when_all_cold():
     cold = parse_artwork(RAW_COLD)
     assert pick_artwork([cold], 2000) is None
+
+
+def test_parse_artwork_multipage_original_from_meta_pages():
+    """多 P 作品的原图在 meta_pages[0].image_urls.original，应被正确解析。"""
+    raw = {
+        "id": 999,
+        "title": "多P作品",
+        "type": "illust",
+        "page_count": 3,
+        "total_bookmarks": 10000,
+        "total_view": 50000,
+        "user": {"id": 9, "name": "絵師"},
+        # 没有 meta_single_page
+        "meta_pages": [
+            {
+                "image_urls": {
+                    "original": "https://i.pximg.net/img-original/img/2026/10/20/999_p0.png",
+                    "large": "https://i.pximg.net/img-master/999_p0_master1200.jpg",
+                }
+            },
+            {"image_urls": {"original": "https://i.pximg.net/999_p1.png"}},
+        ],
+        "image_urls": {"large": "https://i.pximg.net/img-master/999_p0_master1200.jpg"},
+        "tags": ["女の子"],
+    }
+    artwork = parse_artwork(raw)
+    assert artwork is not None
+    assert artwork.is_multi_page
+    # 取到 meta_pages[0] 的原图，而不是 None
+    assert artwork.original_url == (
+        "https://i.pximg.net/img-original/img/2026/10/20/999_p0.png"
+    )
+    assert is_high_quality(artwork, 5000) is True
+
+
+def test_parse_artwork_multipage_no_meta_pages_falls_back_to_image_urls():
+    """缺 meta_pages 时回退到顶层 image_urls.large。"""
+    raw = {
+        "id": 998,
+        "title": "无meta", "type": "illust", "page_count": 1,
+        "total_bookmarks": 3000, "total_view": 9000,
+        "user": {"id": 8, "name": "人"},
+        "image_urls": {"large": "https://i.pximg.net/c/x/998_p0_master1200.jpg"},
+        "tags": [],
+    }
+    artwork = parse_artwork(raw)
+    assert artwork is not None
+    assert artwork.original_url == (
+        "https://i.pximg.net/c/x/998_p0_master1200.jpg"
+    )
+    assert is_high_quality(artwork, 1000) is True
