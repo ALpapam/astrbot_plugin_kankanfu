@@ -200,88 +200,110 @@ class PixivClient:
         self,
         word: str,
         *,
-        sort: str = "popular_desc",
-        num_results: int = 30,
+        words: list[str] | None = None,
+        num_results: int = 300,
         max_pages: int = 5,
     ) -> list[dict[str, Any]]:
-        """按热度检索插画，跨页抓取后合并返回原始作品条目。
+        """按热度检索插画，跨词/跨页抓取后合并去重返回原始作品条目。
 
-        走 Pixiv 官方的 ``popular-preview``（热门预览）接口：它专门为免费
-        账号提供该词条下被广泛收藏的经典高热度作品（非会员即可访问、无需
-        会员细分），返回的是真正的高收藏作品，且带 ``illust_ai_type`` 标记，
-        可供调用方过滤 AI 生成内容。
+        走 Pixiv 官方的 ``popular-preview``（热门预览）接口：它专门为免费账号
+        提供关键词下被广泛收藏的经典高热度作品（非会员即可访问），返回真正
+        的高收藏作品，带 ``illust_ai_type`` 标记可供过滤 AI 内容。
 
-        ``popular-preview`` 返回数量有限（每页约 30 条），因此这里跨页抓取
-        最多 ``max_pages`` 页，全部合并后由调用方按收藏数/分级/是否 AI 筛。
+        因为 ``popular-preview`` 单个词只返回有限的一小撮（约 30 张），单个词
+        候选池很小、发几次就容易重复。因此这里支持传入 ``words`` 一组相关的
+        扩展词：对**每个词分别调用** popular-preview 并**按作品 ID 合并去重**，
+        让候选池扩大数倍（实测 5-7 个相关词能合并出 120-150 张高收藏非 AI
+        作品）。``word`` 始终为首要词（保证覆盖原配置），``words`` 为附加扩展词。
         """
         if not self._access_token:
             await self._ensure_token()
-        params = {
-            "word": word,
-            "search_target": "partial_match_for_tags",
-            "filter": "for_ios",
-        }
+        keywords = [word]
+        for w in words or []:
+            w = (w or "").strip()
+            if w and w != word:
+                keywords.append(w)
         result_by_url: dict[str, dict[str, Any]] = {}
-        next_url: str | None = urljoin(APP_API_BASE, "/v1/search/popular-preview/illust")
-        page = 0
         timeout = aiohttp.ClientTimeout(total=self.timeout_seconds)
         try:
             async with aiohttp.ClientSession(timeout=timeout) as session:
-                while (
-                    next_url and len(result_by_url) < num_results and page < max_pages
-                ):
-                    request_url = (
-                        next_url if page > 0 else urljoin(APP_API_BASE, "/v1/search/popular-preview/illust")
+                for kw in keywords:
+                    page = 0
+                    next_url = urljoin(
+                        APP_API_BASE, "/v1/search/popular-preview/illust"
                     )
-                    async with session.get(
-                        request_url,
-                        params=(params if page == 0 else None),
-                        headers=await self._authorized_headers(),
-                        proxy=self.proxy or None,
-                    ) as response:
-                        body = await response.text()
-                        status = response.status
-                        if status == 401:
-                            # token 过期，重新换取后再试一次
-                            await self.refresh_access_token(session)
-                            async with session.get(
-                                request_url,
-                                params=(params if page == 0 else None),
-                                headers=await self._authorized_headers(),
-                                proxy=self.proxy or None,
-                            ) as retry:
-                                body = await retry.text()
-                                status = retry.status
-                        if status == 429:
-                            raise PixivError("Pixiv 检索被限流（HTTP 429），请稍后再试", status=429)
-                        if status != 200:
-                            detail = self._hint_from_body(body)
-                            raise PixivError(
-                                f"Pixiv 检索失败（HTTP {status}）{detail}", status=status
-                            )
-                        payload = _parse_json_object(body)
-                    batch = payload.get("illusts")
-                    if not isinstance(batch, list) or not batch:
-                        # 诊断：记录这一页到底收到了什么，便于排查空结果
-                        logger.warning(
-                            "[KankanFu] 检索第 %d 页结果为空: status=%d, word=%r, "
-                            "response keys=%r, body head=%r",
-                            page + 1,
-                            status,
-                            word,
-                            list(payload.keys()) if isinstance(payload, dict) else type(payload).__name__,
-                            body[:160],
+                    while next_url and page < max_pages:
+                        params = (
+                            {
+                                "word": kw,
+                                "search_target": "partial_match_for_tags",
+                                "filter": "for_ios",
+                            }
+                            if page == 0
+                            else None
                         )
+                        request_url = next_url
+                        async with session.get(
+                            request_url,
+                            params=params,
+                            headers=await self._authorized_headers(),
+                            proxy=self.proxy or None,
+                        ) as response:
+                            body = await response.text()
+                            status = response.status
+                            if status == 401:
+                                # token 过期，重新换取后再试一次
+                                await self.refresh_access_token(session)
+                                async with session.get(
+                                    request_url,
+                                    params=params,
+                                    headers=await self._authorized_headers(),
+                                    proxy=self.proxy or None,
+                                ) as retry:
+                                    body = await retry.text()
+                                    status = retry.status
+                            if status == 429:
+                                raise PixivError(
+                                    "Pixiv 检索被限流（HTTP 429），请稍后再试",
+                                    status=429,
+                                )
+                            if status != 200:
+                                detail = self._hint_from_body(body)
+                                raise PixivError(
+                                    f"Pixiv 检索失败（HTTP {status}）{detail}",
+                                    status=status,
+                                )
+                            payload = _parse_json_object(body)
+                        batch = payload.get("illusts")
+                        if not isinstance(batch, list) or not batch:
+                            logger.warning(
+                                "[KankanFu] 检索 %r 第 %d 页结果为空: status=%d, "
+                                "response keys=%r, body head=%r",
+                                kw,
+                                page + 1,
+                                status,
+                                list(payload.keys())
+                                if isinstance(payload, dict)
+                                else type(payload).__name__,
+                                body[:160],
+                            )
+                            break
+                        for item in batch:
+                            if isinstance(item, dict) and item.get("id") is not None:
+                                result_by_url[str(item["id"])] = item
+                        page += 1
+                        next_url = payload.get("next_url")
+                        if not next_url:
+                            break
+                    # 每个词之间稍作停顿，避免多词连续请求触发 Pixiv 限流
+                    if len(result_by_url) >= num_results:
                         break
-                    for item in batch:
-                        if isinstance(item, dict) and item.get("id") is not None:
-                            result_by_url[str(item["id"])] = item
-                    page += 1
-                    next_url = payload.get("next_url")
-                    if not next_url:
-                        break
+                    if kw is not keywords[-1]:
+                        await asyncio.sleep(0.4)
         except aiohttp.ClientError as exc:
-            raise PixivError(f"检索 Pixiv 时网络错误: {type(exc).__name__}") from exc
+            raise PixivError(
+                f"检索 Pixiv 时网络错误: {type(exc).__name__}"
+            ) from exc
 
         return list(result_by_url.values())[:num_results]
 

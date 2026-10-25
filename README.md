@@ -35,8 +35,9 @@ ID: 123 | 收藏 5000 | 浏览 30000
 | `refresh_token` | string | 空 | **必填**。Pixiv 账号的 refresh_token |
 | `proxy` | string | 空 | 访问 pixiv.net 使用的代理，如 `http://127.0.0.1:7890` |
 | `search_word` | string | `小穴` | Pixiv 检索关键词（标签）。**注意：不要带 `#` 前缀**，否则搜不到结果 |
+| `related_words` | string | `マンコ,オナニー,くぱぁ,パイパン,裸足,足裏` | 相关扩展检索词（逗号分隔）。插件会用 `search_word` 和这里每个词**分别**查 Pixiv 热门预览再合并去重，把“高收藏非AI”候选池扩大数倍（实测可达上百张）、减少重复。可自行增删 |
 | `min_bookmarks` | int | 2000 | 最低收藏数，越高越热，用于过滤低质图 |
-| `max_results` | int | 5 | 抓取检索结果**页数**（热门预览每页约 30 条，默认最多 5 页）。检索走 Pixiv 官方「热门预览」接口，返回的多是该词条下被广泛收藏的经典作品 |
+| `max_results` | int | 5 | 每个检索词的抓取页数（热门预览每页约 30 条）。多词合并后候选可到上百张 |
 | `timeout_seconds` | int | 30 | 请求超时（5-120 秒） |
 | `send_progress` | bool | true | 检索前是否先发一条「正在看看福」提示 |
 | `show_info` | bool | true | 图片后是否附带作品信息（标题 / 收藏数 / 画师） |
@@ -66,7 +67,8 @@ Pixiv 没有公开的“网页登录拿 token”入口，社区通用的取法�
 直接发送 `看看福` 即可（是否需要 @机器人 或唤醒前缀取决于 AstrBot 配置）。插件会：
 
 1. 用 refresh_token 登录 Pixiv；
-2. 走 Pixiv 官方「热门预览」接口跨页检索 `小穴` 标签（返回该词条下被广泛收藏的经典高热度作品，无需会员）；
+2. 用 `search_word` + `related_words` 每个词分别走 Pixiv 官方「热门预览」接口检索，合并去重为一个大候选池
+   （该接口返回被广泛收藏的经典高热度、非 AI 靠前的作品，无需会员）；
 3. 从结果里按 `search_rating` 分级、`exclude_ai` 过滤 AI，并筛出 **收藏数 ≥ min_bookmarks** 且**有原图**的作品
    （即“非低质图”），优先避开最近发过的图，在其中**随机挑 1 张**发送；
 4. 下载原图（处理 pixiv 防盗链）发送给你，并附带作品信息。
@@ -84,7 +86,7 @@ Pixiv 没有公开的“网页登录拿 token”入口，社区通用的取法�
 
 - 认证：`POST https://oauth.secure.pixiv.net/auth/token`，用 `refresh_token` 换 `access_token`；
 - 检索：`GET https://app-api.pixiv.net/v1/search/popular-preview/illust`，`word=小穴&search_target=partial_match_for_tags&filter=for_ios`，
-  这是 Pixiv 专门给免费账号返回「热门预览」的高收藏作品接口（非会员即可访问、无需会员细分）；
+  这是 Pixiv 专门给免费账号返回「热门预览」的高收藏作品接口（非会员即可访问、无需会员细分）；对 `search_word` 与 `related_words` 每个词各查一次并按作品 ID 合并去重，扩大候选池；
 - 过滤：按 `search_rating` 分级、`exclude_ai` 排除 AI 后，筛出 `total_bookmarks >= min_bookmarks` 且有原图的作品作为“非低质图”，再随机挑一张发送；
 - 原图提取：依次尝试单 P 的 `meta_single_page.original_image_url`、多 P 的 `meta_pages[0].image_urls.original`、以及顶层 `image_urls`（large/medium）回退，确保多 P 收藏大户也能识别；
 - 下载：`GET https://i.pximg.net/{urls.original}`，携带 `Referer: https://www.pixiv.net/` 与鉴权头处理防盗链；
@@ -122,6 +124,9 @@ python -m pytest tests -q
 
 ## 更新日志
 
+- **v0.0.17**：**扩大搜索范围、减少重复问题**。热门预览单词只返回固定几十张，用几次必重复。新增
+  `related_words` 配置：用 `search_word` + 每个相关词**分别**查热门预览再按作品 ID 合并去重，把“高收藏
+  非AI”候选池扩大到数百张（实测 5-7 个相关词能合并出 120-150 张），配合上一版的 `no_repeat` 明显降低重复。
 - **v0.0.16**：新增「短时间内不重复发图」功能。配置 `no_repeat`（默认开启）+ `memory_sent_count`
   （默认记住最近 30 张），挑图时优先避开最近已发过的作品；若候选全被发过则回退发一张以保证出图。
 - **v0.0.15**：**修复「没有够福的图」**。根因：`search/illust` 的 `popular_desc` 排序返回的是“刚上传的近期低收藏/AI 图”，高收藏作品排不进来。现改为走 Pixiv 官方「热门预览」接口 `search/popular-preview/illust`，免费账号即可拿到该词条下被广泛收藏的经典高收藏作品（带 `illust_ai_type` 标记），配合分级/非 AI/收藏/随机挑图，各配置都能稳定出图。

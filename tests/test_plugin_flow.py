@@ -53,8 +53,9 @@ class FakeClient:
         self.calls: list[str] = []
         self.downloads: list[str] = []
 
-    async def search_illusts(self, word, *, sort="popular_desc", num_results=30, max_pages=5):
+    async def search_illusts(self, word, *, words=None, num_results=30, max_pages=5):
         self.calls.append("search")
+        self.words_called = getattr(self, "words_called", []) + [words]
         if self.error:
             raise self.error
         return self.payload
@@ -199,6 +200,16 @@ def test_progress_message_sent_when_enabled():
 
     assert outputs[0]["text"] == PROGRESS_TEXT
     assert outputs[1]["type"] == "image"
+
+
+def test_related_words_are_passed_to_search():
+    """配置里的 related_words 应经过拆分后传给检索，用于扩大候选池。"""
+    plugin = make_plugin(related_words="マンコ,オナニー, 裸足 ")
+    event = FakeEvent()
+    outputs = run_handler(plugin, event)
+    assert outputs and outputs[0]["type"] == "image"  # 正常出图
+    # 拆分后应去掉空白、不把空串算进去
+    assert plugin.client.words_called[-1] == ["マンコ", "オナニー", "裸足"]
 
 
 def test_compress_image_below_limit_returned_as_is():

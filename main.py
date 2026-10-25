@@ -99,6 +99,11 @@ class KankanFuPlugin(Star):
         self._refresh_token = _get_str(config, "refresh_token")
         self._proxy = _get_str(config, "proxy")
         self._search_word = _get_str(config, "search_word") or DEFAULT_SEARCH_WORD
+        # 相关的扩展检索词（逗号分隔），用于扩大 high-quality 候选池、减少重复
+        raw_words = _get_str(config, "related_words") or ""
+        self._related_words = [
+            w.strip() for w in raw_words.split(",") if w and w.strip()
+        ]
         self._min_bookmarks = _get_int(config, "min_bookmarks", 2000, 0, 100000)
         self._max_pages = _get_int(config, "max_results", 5, 1, 10)
         self._timeout = _get_int(config, "timeout_seconds", 30, 5, 120)
@@ -159,7 +164,7 @@ class KankanFuPlugin(Star):
             artworks = parse_artworks(
                 await self.client.search_illusts(
                     word=self._search_word,
-                    sort="popular_desc",
+                    words=self._related_words or None,
                     num_results=self._max_pages * 30,
                     max_pages=self._max_pages,
                 )
