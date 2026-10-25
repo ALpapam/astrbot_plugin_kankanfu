@@ -21,7 +21,9 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
+from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import urljoin
 
@@ -31,9 +33,12 @@ TOKEN_URL = "https://oauth.secure.pixiv.net/auth/token"
 APP_API_BASE = "https://app-api.pixiv.net"
 IMAGE_HOST = "https://i.pximg.net"
 
-#: 社区广泛使用的 Pixiv app-api public client 凭证（仅用于换 token）。
-DEFAULT_CLIENT_ID = "Kz5E1mtPVVKpRrV3CmJq0Wbt0a1pnx7A9nQz"
-DEFAULT_CLIENT_SECRET = "xE5zDQaM4oWzDm0CkP9vL7sB2nQxR4tJ"
+#: 社区广泛使用的 Pixiv app-api public client 凭证（与 pixivpy 一致）。
+DEFAULT_CLIENT_ID = "MOBrBDS8blbauoSck0ZfDbtuzpyT"
+DEFAULT_CLIENT_SECRET = "lsACyCD94FhDUtGTXi3QzcFE2uU1hqtDaKeqrdwj"
+
+#: pixivpy 使用的登录加密密钥，用于生成 x-client-hash。
+DEFAULT_HASH_SECRET = "28c1fdd170a5204386cb1313c7077b34f83e4aaf4aa829ce78c231e05b0bae2c"
 
 DEFAULT_TIMEOUT_SECONDS = 30
 
@@ -87,12 +92,14 @@ class PixivClient:
         proxy: str = "",
         client_id: str = DEFAULT_CLIENT_ID,
         client_secret: str = DEFAULT_CLIENT_SECRET,
+        hash_secret: str = DEFAULT_HASH_SECRET,
     ) -> None:
         self.refresh_token = (refresh_token or "").strip()
         self.timeout_seconds = timeout_seconds
         self.proxy = (proxy or "").strip()
         self.client_id = client_id
         self.client_secret = client_secret
+        self.hash_secret = hash_secret
         self._access_token = ""
 
     # ------------------------------------------------------------------
@@ -101,30 +108,46 @@ class PixivClient:
 
     async def refresh_access_token(self, session: aiohttp.ClientSession) -> str:
         """用 refresh_token 换取 access_token。"""
+        local_time = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S+00:00")
+        client_hash = hashlib.md5(
+            (local_time + self.hash_secret).encode("utf-8")
+        ).hexdigest()
+        auth_headers = {
+            "User-Agent": DEFAULT_USER_AGENT,
+            "x-client-time": local_time,
+            "x-client-hash": client_hash,
+            "App-OS": "ios",
+            "App-OS-Version": "14.6",
+            "App-Version": "7.13.3",
+            "Accept-Language": "zh-cn",
+        }
         data = {
             "grant_type": "refresh_token",
             "refresh_token": self.refresh_token,
             "client_id": self.client_id,
             "client_secret": self.client_secret,
-            "get_secure_url": "true",
-            "include_policy": "true",
+            "get_secure_url": 1,
         }
         timeout = aiohttp.ClientTimeout(total=self.timeout_seconds)
         try:
             async with session.post(
                 TOKEN_URL,
                 data=data,
-                headers={"User-Agent": DEFAULT_USER_AGENT},
+                headers=auth_headers,
                 proxy=self.proxy or None,
                 timeout=timeout,
             ) as response:
                 body = await response.text()
                 status = response.status
+        except asyncio.TimeoutError:
+            raise PixivError("登录 Pixiv 请求超时，请检查网络/代理") from None
         except aiohttp.ClientError as exc:
             raise PixivError(f"登录 Pixiv 时网络错误: {type(exc).__name__}") from exc
 
         if status != 200:
-            raise PixivError(f"登录 Pixiv 失败（HTTP {status}），请检查 refresh_token", status=status)
+            raise PixivError(
+                f"登录 Pixiv 失败（HTTP {status}），请检查 refresh_token", status=status
+            )
         payload = _parse_json_object(body)
         token = (
             payload.get("response", {})
