@@ -24,12 +24,15 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import logging
 import re
 from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import urljoin
 
 import aiohttp
+
+logger = logging.getLogger("astrbot_plugin_kankanfu.client")
 
 TOKEN_URL = "https://oauth.secure.pixiv.net/auth/token"
 APP_API_BASE = "https://app-api.pixiv.net"
@@ -254,6 +257,16 @@ class PixivClient:
                         payload = _parse_json_object(body)
                     batch = payload.get("illusts")
                     if not isinstance(batch, list) or not batch:
+                        # 诊断：记录这一页到底收到了什么，便于排查空结果
+                        logger.warning(
+                            "[KankanFu] 检索第 %d 页结果为空: status=%d, word=%r, "
+                            "response keys=%r, body head=%r",
+                            page + 1,
+                            status,
+                            word,
+                            list(payload.keys()) if isinstance(payload, dict) else type(payload).__name__,
+                            body[:160],
+                        )
                         break
                     results.extend(batch)
                     page += 1
