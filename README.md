@@ -113,6 +113,12 @@ python -m pytest tests -q
 > 若你本机装了 `hydra`（其内置的 `hydra_pytest` 插件因 antlr 版本问题无法加载），
 > 可能要用 `python -m pytest tests -q -p no:hydra_pytest`；正常 AstrBot 环境不受影响。
 
+## 更新日志
+
+- **v0.0.10**：修复「总是提示没有找到够福的图」。根因：`search_illusts` 直接返回
+  `illusts` 列表，而 `parse_artworks` 只接受带 `illusts` 键的响应字典，导致所有作品
+  都被解析成 0 条。现兼容字典与裸列表两种入参（新增回归测试）。
+
 ## 参考
 
 - [AstrBot 插件开发指南](https://astrbot.app/dev/star/plugin-new.html)

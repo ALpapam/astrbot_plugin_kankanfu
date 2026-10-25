@@ -2,7 +2,7 @@ name: astrbot_plugin_kankanfu
 display_name: 看看福
 desc: 发送「看看福」，在 Pixiv 上检索「小穴」相关的非低质图（仅取高热度作品）并发送给你。
 short_desc: 「看看福」——Pixiv 高热度小穴图。
-version: 0.0.9
+version: 0.0.10
 author: ALpapam
 repo: https://github.com/ALpapam/astrbot_plugin_kankanfu
 astrbot_version: ">=4.5,<5"

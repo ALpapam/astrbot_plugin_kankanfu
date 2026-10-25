@@ -122,11 +122,19 @@ def parse_artwork(data: dict[str, Any]) -> Artwork | None:
     )
 
 
-def parse_artworks(payload: dict[str, Any]) -> list[Artwork]:
-    """把 app-api 检索响应转换为 Artwork 列表（按 API 返回顺序）。"""
-    if not isinstance(payload, dict):
+def parse_artworks(payload: dict[str, Any] | list[dict[str, Any]]) -> list[Artwork]:
+    """把 app-api 检索响应转换为 Artwork 列表（按 API 返回顺序）。
+
+    兼容两种入参形式：
+    - 完整响应字典 ``{"illusts": [...]}``（API 原始返回）
+    - 直接传入 ``illusts`` 列表（``search_illusts`` 返回的就是列表）
+    """
+    if isinstance(payload, list):
+        raw = payload
+    elif isinstance(payload, dict):
+        raw = payload.get("illusts")
+    else:
         return []
-    raw = payload.get("illusts")
     if not isinstance(raw, list):
         return []
     works: list[Artwork] = []

@@ -79,6 +79,12 @@ def test_parse_artworks_empty():
     assert parse_artworks({"illusts": "bad"}) == []
 
 
+def test_parse_artworks_accepts_bare_list():
+    """回归：search_illusts 直接返回列表，parse_artworks 必须能直接解析。"""
+    works = parse_artworks([RAW_HOT, {"id": 0}, RAW_COLD])
+    assert [a.illust_id for a in works] == [123, 456]
+
+
 def test_is_high_quality():
     hot = parse_artwork(RAW_HOT)
     assert hot is not None
