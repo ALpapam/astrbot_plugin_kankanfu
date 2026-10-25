@@ -9,6 +9,7 @@ from kankanfu.models import (
     RATING_R18G,
     RATING_SFW,
     artwork_rating,
+    filter_ai,
     filter_by_rating,
     is_high_quality,
     parse_artwork,
@@ -211,3 +212,32 @@ def test_filter_by_rating_unknown_defaults_to_r18():
     r18 = _mk(["R-18"])
     assert filter_by_rating([r18], "whatever") == [r18]
     assert filter_by_rating([r18], None) == [r18]
+
+
+def test_parse_artwork_marks_ai_by_illust_ai_type():
+    human_raw = {
+        "id": 2001, "title": "手绘", "type": "illust", "page_count": 1,
+        "total_bookmarks": 5000, "total_view": 9000,
+        "user": {"id": 9, "name": "人"}, "tags": ["R-18"],
+        "meta_single_page": {"original_image_url": "/img/2001/p0/master1200.jpg"},
+        "illust_ai_type": 0,
+    }
+    ai_raw = dict(human_raw, id=2002, title="AI生成", illust_ai_type=1)
+    missing = dict(human_raw, id=2003, title="无标记")  # 缺字段 -> 非 AI
+    assert parse_artwork(human_raw).is_ai is False
+    assert parse_artwork(ai_raw).is_ai is True
+    assert parse_artwork(missing).is_ai is False
+
+
+def test_filter_ai_excludes_only_ai():
+    human_raw = {
+        "id": 2100, "title": "手绘", "type": "illust", "page_count": 1,
+        "total_bookmarks": 5000, "total_view": 9000,
+        "user": {"id": 9, "name": "人"}, "tags": ["R-18"],
+        "meta_single_page": {"original_image_url": "/img/2100/p0/master1200.jpg"},
+        "illust_ai_type": 0,
+    }
+    human = parse_artwork(human_raw)
+    ai = parse_artwork(dict(human_raw, id=2101, illust_ai_type=1))
+    assert filter_ai([human, ai], exclude_ai=True) == [human]
+    assert filter_ai([human, ai], exclude_ai=False) == [human, ai]

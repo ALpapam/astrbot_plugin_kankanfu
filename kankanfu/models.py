@@ -24,6 +24,7 @@ class Artwork:
     page_url: str
     original_url: str
     tags: list[str]
+    is_ai: bool = False
 
     @property
     def is_multi_page(self) -> bool:
@@ -120,6 +121,7 @@ def parse_artwork(data: dict[str, Any]) -> Artwork | None:
         page_url=f"https://www.pixiv.net/artworks/{illust_id}",
         original_url=original_url,
         tags=_extract_tags(data),
+        is_ai=(_to_int(data.get("illust_ai_type"), 0) == 1),
     )
 
 
@@ -181,6 +183,17 @@ def filter_by_rating(artworks: list[Artwork], rating: str) -> list[Artwork]:
         return [a for a in artworks if artwork_rating(a) == RATING_SFW]
     # 默认 r18：只要 R-18 的作品（自然排除 R-18G）
     return [a for a in artworks if artwork_rating(a) == RATING_R18]
+
+
+def filter_ai(artworks: list[Artwork], exclude_ai: bool) -> list[Artwork]:
+    """按是否排除 AI 生成作品过滤。
+
+    ``exclude_ai`` 为真时只保留 pixiv 标记为「非 AI 生成」的作品；
+    反之原样返回。处理不了缺失标记的作品时，保守判断为非 AI 保留。
+    """
+    if not exclude_ai:
+        return artworks
+    return [a for a in artworks if not a.is_ai]
 
 
 def is_high_quality(artwork: Artwork, min_bookmarks: int) -> bool:

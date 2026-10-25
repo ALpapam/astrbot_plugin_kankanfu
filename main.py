@@ -32,7 +32,7 @@ from .kankanfu.formatter import (
     TOO_FREQUENT_TEMPLATE,
     format_artwork_info,
 )
-from .kankanfu.models import filter_by_rating, parse_artworks, pick_artwork
+from .kankanfu.models import filter_ai, filter_by_rating, parse_artworks, pick_artwork
 
 DEFAULT_SEARCH_WORD = "小穴"
 DEFAULT_SEARCH_RATING = "r18"
@@ -104,6 +104,7 @@ class KankanFuPlugin(Star):
         self._cooldown = _get_int(config, "cooldown_seconds", 10, 0, 600)
         self._max_photo_bytes = _get_int(config, "max_photo_bytes", 9, 1, 20) * 1024 * 1024
         self._search_rating = _get_str(config, "search_rating") or DEFAULT_SEARCH_RATING
+        self._exclude_ai = _get_bool(config, "exclude_ai", True)
 
         # 代理 / 超时 / token 变化时重建客户端，避免长期复用旧连接或凭证
         client = self.client
@@ -169,6 +170,8 @@ class KankanFuPlugin(Star):
 
         # 按用户选择的分级范围（全年龄 / r18 / r18g）过滤后再挑
         artworks = filter_by_rating(artworks, self._search_rating)
+        # 可选排除 AI 生成作品（默认开启）
+        artworks = filter_ai(artworks, self._exclude_ai)
 
         artwork = pick_artwork(artworks, self._min_bookmarks)
         if artwork is None:
