@@ -34,7 +34,7 @@ from .kankanfu.formatter import (
 )
 from .kankanfu.models import parse_artworks, pick_artwork
 
-DEFAULT_SEARCH_WORD = "#小穴"
+DEFAULT_SEARCH_WORD = "小穴"
 
 
 def _guess_image_filename(data: bytes) -> str:
@@ -84,7 +84,7 @@ class KankanFuPlugin(Star):
         self._proxy = _get_str(config, "proxy")
         self._search_word = _get_str(config, "search_word") or DEFAULT_SEARCH_WORD
         self._min_bookmarks = _get_int(config, "min_bookmarks", 2000, 0, 100000)
-        self._max_results = _get_int(config, "max_results", 30, 1, 300)
+        self._max_pages = _get_int(config, "max_results", 5, 1, 10)
         self._timeout = _get_int(config, "timeout_seconds", 30, 5, 120)
         self._send_progress = _get_bool(config, "send_progress", True)
         self._show_info = _get_bool(config, "show_info", True)
@@ -125,7 +125,8 @@ class KankanFuPlugin(Star):
                 await self.client.search_illusts(
                     word=self._search_word,
                     sort="popular_desc",
-                    num_results=self._max_results,
+                    num_results=self._max_pages * 30,
+                    max_pages=self._max_pages,
                 )
             )
         except PixivError as exc:

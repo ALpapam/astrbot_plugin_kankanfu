@@ -112,8 +112,15 @@ def is_high_quality(artwork: Artwork, min_bookmarks: int) -> bool:
 
 
 def pick_artwork(artworks: list[Artwork], min_bookmarks: int) -> Artwork | None:
-    """从已经热度排序的作品里，挑第一张符合高热度标准的可下载图片。"""
-    for artwork in artworks:
-        if is_high_quality(artwork, min_bookmarks):
-            return artwork
-    return None
+    """从跨页合并后的作品列表里，挑收藏数最高的符合高热度标准的可下载图片。
+
+    检索响应按 ``popular_desc`` 返回但并非严格按收藏数排序，
+    因此这里会对符合条件（收藏达标 + 有原图）的作品按收藏数降序取第一名。
+    """
+    candidates = [
+        artwork for artwork in artworks if is_high_quality(artwork, min_bookmarks)
+    ]
+    if not candidates:
+        return None
+    candidates.sort(key=lambda a: a.total_bookmarks, reverse=True)
+    return candidates[0]

@@ -50,7 +50,7 @@ class FakeClient:
         self.calls: list[str] = []
         self.downloads: list[str] = []
 
-    async def search_illusts(self, word, *, sort="popular_desc", num_results=30):
+    async def search_illusts(self, word, *, sort="popular_desc", num_results=30, max_pages=5):
         self.calls.append("search")
         if self.error:
             raise self.error
@@ -84,9 +84,9 @@ def make_plugin(payload=None, error=None, **overrides):
     config = {
         "refresh_token": "fake-token",
         "proxy": "",
-        "search_word": "#小穴",
+        "search_word": "小穴",
         "min_bookmarks": 2000,
-        "max_results": 30,
+        "max_results": 5,
         "timeout_seconds": 30,
         "send_progress": False,
         "show_info": True,

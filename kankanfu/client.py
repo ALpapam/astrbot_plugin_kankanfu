@@ -9,9 +9,10 @@
 
 检索：
 - ``GET https://app-api.pixiv.net/v1/search/illust``
-  - ``word`` 关键词（默认 ``#小穴``）
-  - ``search_target`` ``tag``（标签精确匹配）
-  - ``sort`` ``popular_desc``（按热度从高到低，天然过滤低质图）
+  - ``word`` 关键词（默认 ``小穴``，不要带 ``#`` 前缀）
+  - ``search_target`` ``partial_match_for_tags``（标签部分匹配，pixivpy 默认）
+  - ``filter`` ``for_ios``（pixivpy 默认，对齐 app-api）
+  - ``sort`` ``popular_desc``（热门排序；注意并非严格按总收藏，需跨页抓取再筛高热度）
 
 图片下载：
 - ``GET https://i.pximg.net/{urls.original}``，需要带 ``referer``（pixiv 防盗链）
@@ -198,8 +199,15 @@ class PixivClient:
         *,
         sort: str = "popular_desc",
         num_results: int = 30,
+        max_pages: int = 5,
     ) -> list[dict[str, Any]]:
-        """按热度检索插画，返回按热度排序的原始作品条目。"""
+        """按热度检索插画，跨页抓取后合并返回原始作品条目。
+
+        Pixiv 的 ``popular_desc`` 排序并非按总收藏数严格从高到低，
+        前几页常混入大量低收藏作品。因此这里会抓取多个 offset 页
+        （每页 30 条，默认最多 5 页 = 150 条），全部合并后由调用方
+        自行按收藏数筛选高热度作品。
+        """
         if not self._access_token:
             await self._ensure_token()
         params = {
@@ -213,7 +221,7 @@ class PixivClient:
         timeout = aiohttp.ClientTimeout(total=self.timeout_seconds)
         try:
             async with aiohttp.ClientSession(timeout=timeout) as session:
-                while len(results) < num_results:
+                while len(results) < num_results and page < max_pages:
                     page_params = dict(params)
                     if page > 0:
                         page_params["offset"] = str(page * 30)

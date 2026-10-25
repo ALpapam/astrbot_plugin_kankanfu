@@ -16,8 +16,8 @@
   "search_word": {
     "description": "Pixiv 检索关键词",
     "type": "string",
-    "default": "#小穴",
-    "hint": "默认即可，也可改成其它标签，例如「#女の子」。"
+    "default": "小穴",
+    "hint": "默认即可，也可改成其它标签，例如「女の子」。注意：不要带 # 前缀，否则搜不到结果。"
   },
   "min_bookmarks": {
     "description": "最低收藏数（越高越热）",
@@ -26,10 +26,10 @@
     "hint": "只发送收藏数不低于该值的作品，用于过滤低质图。范围 0-100000。"
   },
   "max_results": {
-    "description": "本轮检索结果数",
+    "description": "抓取检索结果页数（每页30条，越多越可能与高收藏作品相遇）",
     "type": "int",
-    "default": 30,
-    "hint": "默认 30。取值越大一次越能筛出更多符合高收藏数的作品，但请求越慢。"
+    "default": 5,
+    "hint": "默认 5 页 = 150 条。Pixiv 热门排序并非严格按收藏数，需要跨页抓取才能筛到高收藏作品。范围 1-10。"
   },
   "timeout_seconds": {
     "description": "请求 Pixiv 的超时时间（秒）",
