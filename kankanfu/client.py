@@ -23,6 +23,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import re
 from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import urljoin
@@ -42,17 +43,14 @@ DEFAULT_HASH_SECRET = "28c1fdd170a5204386cb1313c7077b34f83e4aaf4aa829ce78c231e05
 
 DEFAULT_TIMEOUT_SECONDS = 30
 
-DEFAULT_USER_AGENT = (
-    "PixivAndroidApp/5.0.234 (Android 11; Pixel 5) "
-    "ALHOjOj8y0HCVv0hN-1BuDZOfC1Zs0ZY"
-)
+DEFAULT_USER_AGENT = "PixivIOSApp/7.13.3 (iOS 14.6; iPhone13,2)"
 
 _APP_JSON_HEADERS = {
     "User-Agent": DEFAULT_USER_AGENT,
-    "App-OS": "android",
-    "App-OS-Version": "11",
-    "App-Version": "5.0.234",
-    "Accept-Language": "zh-CN",
+    "App-OS": "ios",
+    "App-OS-Version": "14.6",
+    "App-Version": "7.13.3",
+    "Accept-Language": "zh-cn",
     "Accept": "application/json",
 }
 
@@ -165,6 +163,31 @@ class PixivClient:
             "Authorization": f"Bearer {self._access_token}",
         }
 
+    @staticmethod
+    def _hint_from_body(body: str) -> str:
+        """从非 200 响应体里尽量提取 Pixiv 给出的错误原因。"""
+        text = (body or "").strip()
+        if not text:
+            return ""
+        try:
+            payload = json.loads(text)
+        except json.JSONDecodeError:
+            snippet = re.sub(r"\\s+", " ", text)[:120]
+            return f" | {snippet}" if snippet else ""
+        error = payload.get("error")
+        if isinstance(error, dict):
+            message = error.get("message")
+            user_m = error.get("user_message")
+            detail = (user_m or message or "").strip()
+            if detail:
+                return f" | {detail[:160]}"
+            reason = error.get("reason")
+            if isinstance(reason, dict):
+                hint = reason.get("message") or reason.get("user_message")
+                if hint:
+                    return f" | {str(hint)[:160]}"
+        return ""
+
     # ------------------------------------------------------------------
     # 检索
     # ------------------------------------------------------------------
@@ -181,18 +204,19 @@ class PixivClient:
             await self._ensure_token()
         params = {
             "word": word,
-            "search_target": "tag",
+            "search_target": "partial_match_for_tags",
             "sort": sort,
-            "offset": "0",
+            "filter": "for_ios",
         }
         results: list[dict[str, Any]] = []
         page = 0
         timeout = aiohttp.ClientTimeout(total=self.timeout_seconds)
         try:
             async with aiohttp.ClientSession(timeout=timeout) as session:
-                page_params = dict(params)
                 while len(results) < num_results:
-                    page_params["offset"] = str(page * 30)
+                    page_params = dict(params)
+                    if page > 0:
+                        page_params["offset"] = str(page * 30)
                     async with session.get(
                         urljoin(APP_API_BASE, "/v1/search/illust"),
                         params=page_params,
@@ -215,8 +239,9 @@ class PixivClient:
                         if status == 429:
                             raise PixivError("Pixiv 检索被限流（HTTP 429），请稍后再试", status=429)
                         if status != 200:
+                            detail = self._hint_from_body(body)
                             raise PixivError(
-                                f"Pixiv 检索失败（HTTP {status}）", status=status
+                                f"Pixiv 检索失败（HTTP {status}）{detail}", status=status
                             )
                         payload = _parse_json_object(body)
                     batch = payload.get("illusts")

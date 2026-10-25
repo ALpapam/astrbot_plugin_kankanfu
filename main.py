@@ -197,7 +197,19 @@ class KankanFuPlugin(Star):
 
     def _error_text(self, exc: PixivError) -> str:
         if "401" in exc.message or exc.status == 401 or "refresh_token" in exc.message:
-            return TOKEN_INVALID_TEXT
+            return self._with_detail(TOKEN_INVALID_TEXT, exc)
         if exc.status == 429:
             return RATE_LIMIT_TEXT
-        return SEARCH_FAILED_TEXT
+        return self._with_detail(SEARCH_FAILED_TEXT, exc)
+
+    @staticmethod
+    def _with_detail(base: str, exc: PixivError) -> str:
+        """在基础文案后追加一行真实错误详情，便于排查（可能含有服务端原因）。"""
+        message = exc.message or ""
+        # 去掉无意义的通用前缀，只保留服务端给出的具体原因
+        marker = "| "
+        if marker in message:
+            detail = message.split(marker, 1)[1].strip()
+            if detail and len(detail) <= 200:
+                return f"{base}\n（{detail}）"
+        return base
