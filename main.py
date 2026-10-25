@@ -101,6 +101,7 @@ class KankanFuPlugin(Star):
         self._send_progress = _get_bool(config, "send_progress", True)
         self._show_info = _get_bool(config, "show_info", True)
         self._cooldown = _get_int(config, "cooldown_seconds", 10, 0, 600)
+        self._max_photo_bytes = _get_int(config, "max_photo_bytes", 9, 1, 20) * 1024 * 1024
 
         # 代理 / 超时 / token 变化时重建客户端，避免长期复用旧连接或凭证
         client = self.client
@@ -200,7 +201,16 @@ class KankanFuPlugin(Star):
             yield event.plain_result(SEARCH_FAILED_TEXT)
             return
 
-        path = await asyncio.to_thread(self._save_temp_image, data)
+        # 若图片超过平台上限（如 Telegram 约 10MB），则自动压缩后再发送
+        photo_data = await asyncio.to_thread(
+            self._compress_image, data, self._max_photo_bytes
+        )
+        if photo_data is not data:
+            logger.info(
+                f"[KankanFu] 原图 {len(data)} 字节过大，压缩为 {len(photo_data)} 字节后发送"
+            )
+
+        path = await asyncio.to_thread(self._save_temp_image, photo_data)
         if path is None:
             yield event.plain_result(SEARCH_FAILED_TEXT)
             return
@@ -226,6 +236,82 @@ class KankanFuPlugin(Star):
         except OSError:
             logger.error("[KankanFu] 写入临时图片失败", exc_info=True)
             return None
+
+    @staticmethod
+    def _compress_image(data: bytes, max_bytes: int) -> bytes:
+        """把图片压缩到 ``max_bytes`` 以内（用 Pillow），原样返回不超过上限的图。
+
+        策略：按一定步长降低 JPEG 质量，必要时逐级缩小尺寸，直到体积达标。
+        若 Pillow 不可用或图片无法解析，则原样返回（并记录日志）。
+        """
+        if not data or max_bytes <= 0 or len(data) <= max_bytes:
+            return data
+        try:
+            from PIL import Image
+        except Exception:  # Pillow 未安装时无法压缩
+            logger.warning("[KankanFu] Pillow 不可用，无法压缩图片，按原始尺寸发送")
+            return data
+
+        import io
+        try:
+            img = Image.open(io.BytesIO(data))
+            img.load()
+        except Exception as exc:
+            logger.warning(f"[KankanFu] 图片无法用 Pillow 解析，按原始尺寸发送: {exc}")
+            return data
+
+        # 只对可无损/有损重存的格式处理；动图(GIF)与贴纸一般不压缩，避免破坏动画
+        fmt = (img.format or "JPEG").upper()
+        # 需要 RGBA 转换处理透明图（Telegram 照片不支持 alpha 的 JPEG）
+        if fmt == "PNG":
+            target_fmt = "PNG"
+        elif fmt == "JPEG":
+            target_fmt = "JPEG"
+        elif fmt == "WEBP":
+            target_fmt = "WEBP"
+        else:
+            target_fmt = "PNG"  # 非标准格式统一转 PNG
+
+        def _encode(im, quality: int) -> bytes:
+            buf = io.BytesIO()
+            save_kw = {}
+            if target_fmt == "JPEG":
+                if im.mode in ("RGBA", "LA", "P"):
+                    im = im.convert("RGB")
+                save_kw = {"quality": quality, "optimize": True}
+            elif target_fmt == "PNG":
+                # PNG 用压缩级别而非质量
+                save_kw = {"optimize": True}
+            elif target_fmt == "WEBP":
+                save_kw = {"quality": quality}
+            im.save(buf, format=target_fmt, **save_kw)
+            return buf.getvalue()
+
+        # 先固定尺寸只调质量；仍超限则逐步缩小尺寸，始终返回已成功编码的最小版本
+        quality = 85
+        width, height = img.size
+        scale = 1.0
+        best_out: bytes | None = None
+        # 转 RGB 以便后续缩小/压 JPEG/WEBP 时不丢通道信息
+        base = img.convert("RGB") if img.mode in ("RGBA", "LA", "P") else img
+        img_work = base
+        for _ in range(30):
+            out = _encode(img_work, quality)
+            if len(out) <= max_bytes:
+                return out
+            if best_out is None or len(out) < len(best_out):
+                best_out = out
+            # 先降质量，再缩尺寸
+            if quality > 45:
+                quality -= 15
+            else:
+                scale *= 0.8
+                if scale < 0.06:
+                    break
+                new_size = (max(1, int(width * scale)), max(1, int(height * scale)))
+                img_work = base.resize(new_size)
+        # 走到这里说明怎么压都超限：返回迄今最小的一份，至少比原图小
+        return best_out if best_out is not None else data
 
     def _cooldown_remaining(self, sender_id: str) -> int:
         if self._cooldown <= 0:

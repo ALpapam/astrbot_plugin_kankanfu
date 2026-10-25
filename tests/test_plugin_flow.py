@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import types
+from io import BytesIO
+
+import pytest
 
 from astrbot_plugin_kankanfu import main as plugin_module
 from astrbot_plugin_kankanfu.kankanfu.client import PixivError
@@ -195,3 +198,30 @@ def test_progress_message_sent_when_enabled():
 
     assert outputs[0]["text"] == PROGRESS_TEXT
     assert outputs[1]["type"] == "image"
+
+
+def test_compress_image_below_limit_returned_as_is():
+    small = b"tiny-bytes"
+    out = plugin_module.KankanFuPlugin._compress_image(small, 1024)
+    assert out is small
+
+
+def test_large_image_is_compressed_under_limit():
+    """超大图片应被压缩到不超上限且仍可被 Pillow 打开。"""
+    pytest.importorskip("PIL")
+    from PIL import Image
+
+    # 用随机噪声生成一张真·大体积图，避免纯色被 PNG 压到很小
+    rnd = __import__("random").Random(1)
+    big_img = Image.new("RGB", (3000, 3000))
+    big_img.putdata([(rnd.randint(0, 255),) * 3 for _ in range(3000 * 3000)])
+    buf = BytesIO()
+    big_img.save(buf, format="JPEG", quality=95)
+    big = buf.getvalue()
+    limit = 512 * 1024  # 512KB，保证必然触发压缩
+    assert len(big) > limit  # 前置假设：输入确实超大
+    out = plugin_module.KankanFuPlugin._compress_image(big, limit)
+    assert len(out) <= limit
+    assert len(out) < len(big)
+    reopen = Image.open(BytesIO(out))
+    reopen.load()

@@ -52,5 +52,11 @@
     "type": "int",
     "default": 10,
     "hint": "设为 0 表示不限制。可以避免刷屏和过快消耗 Pixiv 配额。"
+  },
+  "max_photo_bytes": {
+    "description": "发送前图片允许的最大字节数（超出会自动压缩）",
+    "type": "int",
+    "default": 9,
+    "hint": "Telegram 单张照片上限约 10MB。单位：MB，范围 1-20。图片超过该大小时会自动压缩后再发送。"
   }
 }
