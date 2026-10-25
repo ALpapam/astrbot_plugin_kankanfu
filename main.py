@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import tempfile
 import time
+from collections import deque
 from pathlib import Path
 from typing import Any
 
@@ -83,6 +84,8 @@ class KankanFuPlugin(Star):
 
         self.client: PixivClient | None = None
         self._last_search_at: dict[str, float] = {}
+        # 最近已发送的作品 ID（按时间顺序，单位数由 memory_sent_count 控制）
+        self._sent_ids: deque[int] = deque(maxlen=500)
         # 配置在每次执行指令时实时读取（改面板配置无需重载插件即可生效）
         self._load_config()
 
@@ -105,6 +108,8 @@ class KankanFuPlugin(Star):
         self._max_photo_bytes = _get_int(config, "max_photo_bytes", 9, 1, 20) * 1024 * 1024
         self._search_rating = _get_str(config, "search_rating") or DEFAULT_SEARCH_RATING
         self._exclude_ai = _get_bool(config, "exclude_ai", True)
+        self._no_repeat = _get_bool(config, "no_repeat", True)
+        self._memory_sent = _get_int(config, "memory_sent_count", 30, 1, 500)
 
         # 代理 / 超时 / token 变化时重建客户端，避免长期复用旧连接或凭证
         client = self.client
@@ -173,7 +178,12 @@ class KankanFuPlugin(Star):
         # 可选排除 AI 生成作品（默认开启）
         artworks = filter_ai(artworks, self._exclude_ai)
 
-        artwork = pick_artwork(artworks, self._min_bookmarks)
+        exclude_ids = None
+        if self._no_repeat:
+            # 把当前记忆条数内已经发过的 ID 传给挑选逻辑，尽量避开重复
+            recent = list(self._sent_ids)[-self._memory_sent :]
+            exclude_ids = set(recent)
+        artwork = pick_artwork(artworks, self._min_bookmarks, exclude_ids=exclude_ids)
         if artwork is None:
             # 记录诊断信息，便于排查「为什么没有够福的图」
             hi = sum(1 for a in artworks if a.original_url)
@@ -224,6 +234,9 @@ class KankanFuPlugin(Star):
             return
 
         yield event.image_result(path)
+
+        # 记入「最近已发送」，供后续「不重复」功能使用
+        self._sent_ids.append(artwork.illust_id)
 
         if self._show_info:
             yield event.plain_result(format_artwork_info(artwork))

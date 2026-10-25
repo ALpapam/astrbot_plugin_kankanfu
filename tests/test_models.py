@@ -129,6 +129,30 @@ def test_pick_artwork_none_when_all_cold():
     assert pick_artwork([cold], 2000) is None
 
 
+def test_pick_artwork_exclude_ids_prefers_fresh():
+    hot1 = parse_artwork(RAW_HOT)  # id=123
+    raw2 = dict(RAW_HOT, id=124, title="另一张")
+    hot2 = parse_artwork(raw2)
+    raw3 = dict(RAW_HOT, id=125, title="第三张")
+    hot3 = parse_artwork(raw3)
+    artworks = [hot1, hot2, hot3]
+    # 排除已发过的 {123, 124} 后，应只从 125 中挑
+    rng = random.Random(7)
+    picked = {pick_artwork(artworks, 2000, rng=rng, exclude_ids={123, 124}).illust_id for _ in range(30)}
+    assert picked == {125}
+
+
+def test_pick_artwork_exclude_ids_all_excluded_falls_back():
+    hot1 = parse_artwork(RAW_HOT)
+    raw2 = dict(RAW_HOT, id=124, title="另一张")
+    hot2 = parse_artwork(raw2)
+    artworks = [hot1, hot2]
+    # 两个都被排除，仍应回退挑 1 张（保证出图）
+    rng = random.Random(3)
+    picked = {pick_artwork(artworks, 2000, rng=rng, exclude_ids={123, 124}).illust_id for _ in range(20)}
+    assert picked <= {123, 124} and picked
+
+
 def test_parse_artwork_multipage_original_from_meta_pages():
     """多 P 作品的原图在 meta_pages[0].image_urls.original，应被正确解析。"""
     raw = {

@@ -207,12 +207,17 @@ def pick_artwork(
     artworks: list[Artwork],
     min_bookmarks: int,
     rng: random.Random | None = None,
+    exclude_ids: set[int] | None = None,
 ) -> Artwork | None:
     """从符合高热度标准（收藏达标 + 有原图）的作品里随机挑 1 张。
 
     检索响应按 ``popular_desc`` 返回但并非严格按收藏数排序，
     先筛出全部符合条件（收藏达标 + 有原图）的作品，再在其中随机抽取一张，
     避免每次都发收藏数最高的同一张。可用 ``rng`` 注入随机源以方便测试。
+
+    若给了 ``exclude_ids``（如最近发过的作品 ID），会**优先**从不在其中的
+    候选里挑，尽量不重复；但如果候选全被排除、实在没得挑，则回退到全部
+    候选里挑一张，保证仍能发图。
     """
     rng = rng if rng is not None else random
     candidates = [
@@ -220,4 +225,8 @@ def pick_artwork(
     ]
     if not candidates:
         return None
+    if exclude_ids:
+        fresh = [a for a in candidates if a.illust_id not in exclude_ids]
+        if fresh:
+            return rng.choice(fresh)
     return rng.choice(candidates)

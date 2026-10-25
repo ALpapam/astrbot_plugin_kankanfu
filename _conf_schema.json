@@ -71,5 +71,17 @@
     "type": "bool",
     "default": true,
     "hint": "Pixiv 返回的作品带 illust_ai_type 标记，开启后只发送非 AI 生成的作品。"
+  },
+  "no_repeat": {
+    "description": "短时间内尽量不发送重复的图",
+    "type": "bool",
+    "default": true,
+    "hint": "开启后，挑图时会优先避开最近已发送过的作品，尽量避免短时间内重复。若候选全都被发过，仍会回退发一张以保证出图。记忆条数由 memory_sent_count 控制。"
+  },
+  "memory_sent_count": {
+    "description": "「不重复」记住最近发送过的图数量",
+    "type": "int",
+    "default": 30,
+    "hint": "只影响「最近发送过」的判定范围，数值越大越不容易重复。范围 1-500。"
   }
 }
